@@ -1,0 +1,29 @@
+{
+  "name": "ai-file-explorer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-powered file explorer: desktop app + CLI, backed by local Ollama models",
+  "license": "MIT",
+  "workspaces": [
+    "core",
+    "desktop",
+    "cli"
+  ],
+  "scripts": {
+    "build": "npm -w @afe/core run build && npm -w @afe/cli run build && npm -w @afe/desktop run build",
+    "build:core": "npm -w @afe/core run build",
+    "build:cli": "npm -w @afe/cli run build",
+    "build:desktop": "npm -w @afe/desktop run build",
+    "dev:desktop": "npm -w @afe/desktop run dev",
+    "dev:cli": "npm -w @afe/cli run dev",
+    "lint": "npm -w @afe/core run lint && npm -w @afe/cli run lint && npm -w @afe/desktop run lint",
+    "typecheck": "npm -w @afe/core run typecheck && npm -w @afe/cli run typecheck && npm -w @afe/desktop run typecheck"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "@types/node": "^22.9.0",
+    "eslint": "^9.14.0",
+    "@typescript-eslint/parser": "^8.14.0",
+    "@typescript-eslint/eslint-plugin": "^8.14.0"
+  }
+}
