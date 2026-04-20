@@ -10,6 +10,7 @@
     "cli"
   ],
   "scripts": {
+    "postinstall": "electron-rebuild -w better-sqlite3 --only better-sqlite3 || true",
     "build": "npm -w @afe/core run build && npm -w @afe/cli run build && npm -w @afe/desktop run build",
     "build:core": "npm -w @afe/core run build",
     "build:cli": "npm -w @afe/cli run build",
