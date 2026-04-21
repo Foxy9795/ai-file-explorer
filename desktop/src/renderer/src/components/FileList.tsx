@@ -13,6 +13,12 @@ interface Props {
   onSortChange: (k: SortKey, d: SortDir) => void;
   filter: string;
   refreshKey?: number;
+  renamingPath: string | null;
+  onCommitRename: (oldPath: string, newName: string) => void;
+  onCancelRename: () => void;
+  onContextMenuRow: (e: React.MouseEvent, node: FileNode) => void;
+  onContextMenuEmpty: (e: React.MouseEvent) => void;
+  cutPaths: Set<string>;
 }
 
 export function FileList({
@@ -26,6 +32,12 @@ export function FileList({
   onSortChange,
   filter,
   refreshKey,
+  renamingPath,
+  onCommitRename,
+  onCancelRename,
+  onContextMenuRow,
+  onContextMenuEmpty,
+  cutPaths,
 }: Props): JSX.Element {
   const [entries, setEntries] = useState<FileNode[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -131,23 +143,32 @@ export function FileList({
     );
   }
 
+  const common = {
+    selected,
+    onSelect,
+    onOpen,
+    renamingPath,
+    onCommitRename,
+    onCancelRename,
+    onContextMenuRow,
+    cutPaths,
+  };
+
   let inner: JSX.Element;
   if (viewMode === 'list') {
     inner = (
       <ListView
         entries={shown}
-        selected={selected}
-        onSelect={onSelect}
-        onOpen={onOpen}
+        {...common}
         sortKey={sortKey}
         sortDir={sortDir}
         onSortChange={onSortChange}
       />
     );
   } else if (viewMode === 'grid') {
-    inner = <GridView entries={shown} selected={selected} onSelect={onSelect} onOpen={onOpen} />;
+    inner = <GridView entries={shown} {...common} />;
   } else {
-    inner = <GalleryView entries={shown} selected={selected} onSelect={onSelect} onOpen={onOpen} />;
+    inner = <GalleryView entries={shown} {...common} />;
   }
 
   return (
@@ -156,17 +177,80 @@ export function FileList({
       className="file-list-root"
       tabIndex={0}
       onKeyDown={onKeyDown}
+      onContextMenu={(e) => {
+        if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('file-list-body') || (e.target as HTMLElement).classList.contains('file-grid') || (e.target as HTMLElement).classList.contains('file-gallery') || (e.target as HTMLElement).classList.contains('file-list-root')) {
+          onContextMenuEmpty(e);
+        }
+      }}
     >
       {inner}
     </div>
   );
 }
 
-interface ViewProps {
-  entries: FileNode[];
+interface RowCommon {
   selected: string | null;
   onSelect: (p: string) => void;
   onOpen: (n: FileNode) => void;
+  renamingPath: string | null;
+  onCommitRename: (oldPath: string, newName: string) => void;
+  onCancelRename: () => void;
+  onContextMenuRow: (e: React.MouseEvent, n: FileNode) => void;
+  cutPaths: Set<string>;
+}
+
+function RenameInput({
+  initial,
+  isDir,
+  onCommit,
+  onCancel,
+}: {
+  initial: string;
+  isDir: boolean;
+  onCommit: (v: string) => void;
+  onCancel: () => void;
+}): JSX.Element {
+  const [v, setV] = useState(initial);
+  const ref = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    const dot = initial.lastIndexOf('.');
+    if (!isDir && dot > 0) el.setSelectionRange(0, dot);
+    else el.select();
+  }, [initial, isDir]);
+  return (
+    <input
+      ref={ref}
+      className="rename-input"
+      value={v}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={() => {
+        const trimmed = v.trim();
+        if (!trimmed || trimmed === initial) onCancel();
+        else onCommit(trimmed);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const trimmed = v.trim();
+          if (!trimmed || trimmed === initial) onCancel();
+          else onCommit(trimmed);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          onCancel();
+        }
+        e.stopPropagation();
+      }}
+    />
+  );
+}
+
+interface ViewProps extends RowCommon {
+  entries: FileNode[];
 }
 
 function ListView({
@@ -177,6 +261,11 @@ function ListView({
   sortKey,
   sortDir,
   onSortChange,
+  renamingPath,
+  onCommitRename,
+  onCancelRename,
+  onContextMenuRow,
+  cutPaths,
 }: ViewProps & {
   sortKey: SortKey;
   sortDir: SortDir;
@@ -200,14 +289,24 @@ function ListView({
           <div
             key={e.path}
             data-fpath={e.path}
-            className={`file-row${selected === e.path ? ' selected' : ''}`}
+            className={`file-row${selected === e.path ? ' selected' : ''}${cutPaths.has(e.path) ? ' cut' : ''}`}
             onClick={() => onSelect(e.path)}
             onDoubleClick={() => onOpen(e)}
+            onContextMenu={(ev) => onContextMenuRow(ev, e)}
             title={e.path}
           >
             <div className="col col-name">
               <span className="row-icon">{iconFor(e)}</span>
-              <span className="row-name">{e.name}</span>
+              {renamingPath === e.path ? (
+                <RenameInput
+                  initial={e.name}
+                  isDir={e.isDir}
+                  onCommit={(v) => onCommitRename(e.path, v)}
+                  onCancel={onCancelRename}
+                />
+              ) : (
+                <span className="row-name">{e.name}</span>
+              )}
             </div>
             <div className="col col-size">{e.isDir ? '—' : formatSize(e.size)}</div>
             <div className="col col-type">{typeOf(e)}</div>
@@ -219,36 +318,67 @@ function ListView({
   );
 }
 
-function GridView({ entries, selected, onSelect, onOpen }: ViewProps): JSX.Element {
+function GridView({
+  entries,
+  selected,
+  onSelect,
+  onOpen,
+  renamingPath,
+  onCommitRename,
+  onCancelRename,
+  onContextMenuRow,
+  cutPaths,
+}: ViewProps): JSX.Element {
   return (
     <div className="file-grid">
       {entries.map((e) => (
         <div
           key={e.path}
           data-fpath={e.path}
-          className={`grid-cell${selected === e.path ? ' selected' : ''}`}
+          className={`grid-cell${selected === e.path ? ' selected' : ''}${cutPaths.has(e.path) ? ' cut' : ''}`}
           onClick={() => onSelect(e.path)}
           onDoubleClick={() => onOpen(e)}
+          onContextMenu={(ev) => onContextMenuRow(ev, e)}
           title={e.path}
         >
           <div className="grid-icon">{iconFor(e)}</div>
-          <div className="grid-name">{e.name}</div>
+          {renamingPath === e.path ? (
+            <RenameInput
+              initial={e.name}
+              isDir={e.isDir}
+              onCommit={(v) => onCommitRename(e.path, v)}
+              onCancel={onCancelRename}
+            />
+          ) : (
+            <div className="grid-name">{e.name}</div>
+          )}
         </div>
       ))}
     </div>
   );
 }
 
-function GalleryView({ entries, selected, onSelect, onOpen }: ViewProps): JSX.Element {
+function GalleryView({
+  entries,
+  selected,
+  onSelect,
+  onOpen,
+  renamingPath,
+  onCommitRename,
+  onCancelRename,
+  onContextMenuRow,
+  cutPaths,
+}: ViewProps): JSX.Element {
   return (
     <div className="file-gallery">
       {entries.map((e) => (
         <div
           key={e.path}
           data-fpath={e.path}
-          className={`gallery-cell${selected === e.path ? ' selected' : ''}`}
+          className={`gallery-cell${selected === e.path ? ' selected' : ''}${cutPaths.has(e.path) ? ' cut' : ''}`}
           onClick={() => onSelect(e.path)}
           onDoubleClick={() => onOpen(e)}
+          onContextMenu={(ev) => onContextMenuRow(ev, e)}
           title={e.path}
         >
           <div className="gallery-thumb">
@@ -258,7 +388,16 @@ function GalleryView({ entries, selected, onSelect, onOpen }: ViewProps): JSX.El
               <div className="gallery-icon">{iconFor(e)}</div>
             )}
           </div>
-          <div className="gallery-name">{e.name}</div>
+          {renamingPath === e.path ? (
+            <RenameInput
+              initial={e.name}
+              isDir={e.isDir}
+              onCommit={(v) => onCommitRename(e.path, v)}
+              onCancel={onCancelRename}
+            />
+          ) : (
+            <div className="gallery-name">{e.name}</div>
+          )}
         </div>
       ))}
     </div>

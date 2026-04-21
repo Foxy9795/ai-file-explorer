@@ -41,6 +41,14 @@ export interface AfeApi {
   providerName: () => Promise<string>;
   getShowHidden: () => Promise<boolean>;
   setShowHidden: (v: boolean) => Promise<boolean>;
+  newFile: (dir: string, name: string) => Promise<string>;
+  newFolder: (dir: string, name: string) => Promise<string>;
+  rename: (oldPath: string, newName: string) => Promise<string>;
+  trash: (paths: string[]) => Promise<{ path: string; ok: boolean; error?: string }[]>;
+  copyPaths: (paths: string[], destDir: string) => Promise<string[]>;
+  movePaths: (paths: string[], destDir: string) => Promise<string[]>;
+  pathExists: (p: string) => Promise<boolean>;
+  revealInOS: (p: string) => Promise<void>;
 }
 
 declare global {

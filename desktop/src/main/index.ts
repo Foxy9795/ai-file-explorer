@@ -8,7 +8,7 @@ import {
   summarizeFile,
   tagFile,
 } from '@afe/core';
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { promises as fs, existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 
@@ -180,6 +180,115 @@ function registerIpc(): void {
   ipcMain.handle('afe:parentDir', (_e, p: string) => path.dirname(p));
   ipcMain.handle('afe:pathSep', () => path.sep);
   ipcMain.handle('afe:joinPath', (_e, a: string, b: string) => path.join(a, b));
+
+  async function uniquePath(dir: string, name: string): Promise<string> {
+    let candidate = path.join(dir, name);
+    if (!existsSync(candidate)) return candidate;
+    const dot = name.lastIndexOf('.');
+    const stem = dot > 0 ? name.slice(0, dot) : name;
+    const ext = dot > 0 ? name.slice(dot) : '';
+    for (let i = 2; i < 1000; i++) {
+      candidate = path.join(dir, `${stem} (${i})${ext}`);
+      if (!existsSync(candidate)) return candidate;
+    }
+    throw new Error(`Too many conflicts for ${name}`);
+  }
+
+  ipcMain.handle('afe:newFile', async (_e, dir: string, name: string) => {
+    const p = await uniquePath(dir, name);
+    await fs.writeFile(p, '', { flag: 'wx' });
+    return p;
+  });
+
+  ipcMain.handle('afe:newFolder', async (_e, dir: string, name: string) => {
+    const p = await uniquePath(dir, name);
+    await fs.mkdir(p, { recursive: false });
+    return p;
+  });
+
+  ipcMain.handle('afe:rename', async (_e, oldPath: string, newName: string) => {
+    if (!newName || newName.includes('/') || newName.includes('\\') || newName === '.' || newName === '..') {
+      throw new Error('Invalid name');
+    }
+    const parent = path.dirname(oldPath);
+    const target = path.join(parent, newName);
+    if (target === oldPath) return oldPath;
+    if (existsSync(target)) throw new Error(`A file named "${newName}" already exists`);
+    await fs.rename(oldPath, target);
+    return target;
+  });
+
+  ipcMain.handle('afe:trash', async (_e, paths: string[]) => {
+    const results: { path: string; ok: boolean; error?: string }[] = [];
+    for (const p of paths) {
+      try {
+        await shell.trashItem(p);
+        results.push({ path: p, ok: true });
+      } catch (err) {
+        results.push({ path: p, ok: false, error: (err as Error).message });
+      }
+    }
+    return results;
+  });
+
+  async function copyRecursive(src: string, dest: string): Promise<void> {
+    const st = await fs.stat(src);
+    if (st.isDirectory()) {
+      await fs.mkdir(dest, { recursive: false });
+      const names = await fs.readdir(src);
+      for (const name of names) {
+        await copyRecursive(path.join(src, name), path.join(dest, name));
+      }
+    } else {
+      await fs.copyFile(src, dest);
+    }
+  }
+
+  ipcMain.handle('afe:copyPaths', async (_e, paths: string[], destDir: string) => {
+    const out: string[] = [];
+    for (const src of paths) {
+      if (path.dirname(src) === destDir) {
+        const name = path.basename(src);
+        const target = await uniquePath(destDir, name);
+        await copyRecursive(src, target);
+        out.push(target);
+      } else {
+        const target = await uniquePath(destDir, path.basename(src));
+        await copyRecursive(src, target);
+        out.push(target);
+      }
+    }
+    return out;
+  });
+
+  ipcMain.handle('afe:movePaths', async (_e, paths: string[], destDir: string) => {
+    const out: string[] = [];
+    for (const src of paths) {
+      if (path.dirname(src) === destDir) {
+        out.push(src);
+        continue;
+      }
+      const target = await uniquePath(destDir, path.basename(src));
+      try {
+        await fs.rename(src, target);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'EXDEV') {
+          await copyRecursive(src, target);
+          await fs.rm(src, { recursive: true, force: true });
+        } else {
+          throw err;
+        }
+      }
+      out.push(target);
+    }
+    return out;
+  });
+
+  ipcMain.handle('afe:pathExists', async (_e, p: string) => existsSync(p));
+
+  ipcMain.handle('afe:revealInOS', async (_e, p: string) => {
+    shell.showItemInFolder(p);
+  });
 
   ipcMain.handle('afe:readFile', async (_e, p: string) => {
     try {

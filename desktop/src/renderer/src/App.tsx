@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AIPanel } from './components/AIPanel';
 import { AddressBar } from './components/AddressBar';
+import { ContextMenu, type MenuItem } from './components/ContextMenu';
 import { FileList } from './components/FileList';
 import { FilePreview } from './components/FilePreview';
 import { NavRail } from './components/NavRail';
 import type { FileNode } from '../../preload/types';
 import type { Section, SortDir, SortKey, ViewMode } from './types';
+
+type Clipboard = { mode: 'copy' | 'cut'; paths: string[] } | null;
 
 export function App(): JSX.Element {
   const [root, setRoot] = useState<string | null>(null);
@@ -25,6 +28,18 @@ export function App(): JSX.Element {
   const [indexing, setIndexing] = useState(false);
   const [progress, setProgress] = useState<{ scanned: number; indexed: number; skipped: number; currentPath?: string } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [clipboard, setClipboard] = useState<Clipboard>(null);
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [dropActive, setDropActive] = useState(false);
+
+  const cutPaths = useMemo(() => new Set(clipboard?.mode === 'cut' ? clipboard.paths : []), [clipboard]);
+
+  const flashToast = useCallback((kind: 'ok' | 'err', text: string) => {
+    setToast({ kind, text });
+    window.setTimeout(() => setToast(null), 2400);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -122,6 +137,196 @@ export function App(): JSX.Element {
     if (parent && parent !== currentPath) navigateTo(parent);
   }, [currentPath, navigateTo]);
 
+  const onOpen = useCallback(
+    (node: FileNode) => {
+      if (node.isDir) navigateTo(node.path);
+      else {
+        setSelected(node.path);
+        setPreviewOpen(true);
+      }
+    },
+    [navigateTo]
+  );
+
+  const refresh = useCallback(() => setRefreshKey((n) => n + 1), []);
+
+  const doNewFolder = useCallback(async () => {
+    if (!currentPath) return;
+    try {
+      const p = await window.afe.newFolder(currentPath, 'New Folder');
+      refresh();
+      setSelected(p);
+      setRenamingPath(p);
+    } catch (err) {
+      flashToast('err', `New folder failed: ${(err as Error).message}`);
+    }
+  }, [currentPath, refresh, flashToast]);
+
+  const doNewFile = useCallback(async () => {
+    if (!currentPath) return;
+    try {
+      const p = await window.afe.newFile(currentPath, 'New File.txt');
+      refresh();
+      setSelected(p);
+      setRenamingPath(p);
+    } catch (err) {
+      flashToast('err', `New file failed: ${(err as Error).message}`);
+    }
+  }, [currentPath, refresh, flashToast]);
+
+  const doRenameStart = useCallback((p: string) => {
+    setSelected(p);
+    setRenamingPath(p);
+  }, []);
+
+  const doRenameCommit = useCallback(
+    async (oldPath: string, newName: string) => {
+      setRenamingPath(null);
+      try {
+        const next = await window.afe.rename(oldPath, newName);
+        setSelected(next);
+        refresh();
+      } catch (err) {
+        flashToast('err', `Rename failed: ${(err as Error).message}`);
+      }
+    },
+    [refresh, flashToast]
+  );
+
+  const doDelete = useCallback(
+    async (paths: string[]) => {
+      if (paths.length === 0) return;
+      try {
+        const res = await window.afe.trash(paths);
+        const failures = res.filter((r) => !r.ok);
+        if (failures.length > 0) {
+          flashToast('err', `Delete failed for ${failures.length}/${paths.length} item(s)`);
+        } else {
+          flashToast('ok', `Moved ${paths.length} item(s) to trash`);
+        }
+        if (selected && paths.includes(selected)) setSelected(null);
+        refresh();
+      } catch (err) {
+        flashToast('err', `Delete failed: ${(err as Error).message}`);
+      }
+    },
+    [selected, refresh, flashToast]
+  );
+
+  const doCopy = useCallback((paths: string[]) => {
+    if (paths.length === 0) return;
+    setClipboard({ mode: 'copy', paths });
+    flashToast('ok', `Copied ${paths.length} item(s)`);
+  }, [flashToast]);
+
+  const doCut = useCallback((paths: string[]) => {
+    if (paths.length === 0) return;
+    setClipboard({ mode: 'cut', paths });
+    flashToast('ok', `Cut ${paths.length} item(s)`);
+  }, [flashToast]);
+
+  const doPaste = useCallback(async () => {
+    if (!clipboard || !currentPath) return;
+    try {
+      if (clipboard.mode === 'copy') {
+        const out = await window.afe.copyPaths(clipboard.paths, currentPath);
+        flashToast('ok', `Pasted ${out.length} item(s)`);
+      } else {
+        const out = await window.afe.movePaths(clipboard.paths, currentPath);
+        flashToast('ok', `Moved ${out.length} item(s)`);
+        setClipboard(null);
+      }
+      refresh();
+    } catch (err) {
+      flashToast('err', `Paste failed: ${(err as Error).message}`);
+    }
+  }, [clipboard, currentPath, refresh, flashToast]);
+
+  const onContextMenuRow = useCallback(
+    (e: React.MouseEvent, node: FileNode) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setSelected(node.path);
+      const items: MenuItem[] = [
+        { label: 'Open', onClick: () => onOpen(node), shortcut: 'Enter' },
+        { label: 'Reveal in OS', onClick: () => window.afe.revealInOS(node.path) },
+        { separator: true, label: '' },
+        { label: 'Cut', shortcut: 'Ctrl+X', onClick: () => doCut([node.path]) },
+        { label: 'Copy', shortcut: 'Ctrl+C', onClick: () => doCopy([node.path]) },
+        {
+          label: 'Paste',
+          shortcut: 'Ctrl+V',
+          onClick: () => void doPaste(),
+          disabled: !clipboard,
+        },
+        { separator: true, label: '' },
+        { label: 'Rename', shortcut: 'F2', onClick: () => doRenameStart(node.path) },
+        { label: 'Delete', shortcut: 'Del', onClick: () => void doDelete([node.path]) },
+      ];
+      setMenu({ x: e.clientX, y: e.clientY, items });
+    },
+    [onOpen, doCut, doCopy, doPaste, doRenameStart, doDelete, clipboard]
+  );
+
+  const onContextMenuEmpty = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const items: MenuItem[] = [
+        { label: 'New folder', shortcut: 'Ctrl+Shift+N', onClick: () => void doNewFolder() },
+        { label: 'New file', shortcut: 'Ctrl+N', onClick: () => void doNewFile() },
+        { separator: true, label: '' },
+        {
+          label: 'Paste',
+          shortcut: 'Ctrl+V',
+          onClick: () => void doPaste(),
+          disabled: !clipboard,
+        },
+        { separator: true, label: '' },
+        { label: 'Refresh', shortcut: 'F5', onClick: refresh },
+      ];
+      setMenu({ x: e.clientX, y: e.clientY, items });
+    },
+    [doNewFolder, doNewFile, doPaste, clipboard, refresh]
+  );
+
+  const onDragOverRoot = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer?.types?.includes('Files')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      setDropActive(true);
+    }
+  }, []);
+  const onDragLeaveRoot = useCallback((e: React.DragEvent) => {
+    if (e.currentTarget === e.target) setDropActive(false);
+  }, []);
+  const onDropRoot = useCallback(
+    async (e: React.DragEvent) => {
+      setDropActive(false);
+      if (!currentPath) return;
+      const files = Array.from(e.dataTransfer.files ?? []);
+      if (files.length === 0) return;
+      e.preventDefault();
+      const paths = files
+        .map((f) => (f as File & { path?: string }).path ?? '')
+        .filter((p) => p && p !== currentPath);
+      if (paths.length === 0) return;
+      try {
+        await window.afe.copyPaths(paths, currentPath);
+        flashToast('ok', `Imported ${paths.length} item(s)`);
+        refresh();
+      } catch (err) {
+        flashToast('err', `Drop failed: ${(err as Error).message}`);
+      }
+    },
+    [currentPath, refresh, flashToast]
+  );
+
+  const progressPct = useMemo(() => {
+    if (!progress || progress.scanned === 0) return 4;
+    return Math.min(100, ((progress.indexed + progress.skipped) / progress.scanned) * 100);
+  }, [progress]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (section !== 'explorer') return;
@@ -153,6 +358,42 @@ export function App(): JSX.Element {
         setRefreshKey((n) => n + 1);
         return;
       }
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (ctrl && e.shiftKey && (e.key === 'N' || e.key === 'n')) {
+        e.preventDefault();
+        void doNewFolder();
+        return;
+      }
+      if (ctrl && !e.shiftKey && (e.key === 'n' || e.key === 'N')) {
+        e.preventDefault();
+        void doNewFile();
+        return;
+      }
+      if (ctrl && (e.key === 'c' || e.key === 'C') && !isEditable) {
+        e.preventDefault();
+        if (selected) doCopy([selected]);
+        return;
+      }
+      if (ctrl && (e.key === 'x' || e.key === 'X') && !isEditable) {
+        e.preventDefault();
+        if (selected) doCut([selected]);
+        return;
+      }
+      if (ctrl && (e.key === 'v' || e.key === 'V') && !isEditable) {
+        e.preventDefault();
+        void doPaste();
+        return;
+      }
+      if (!isEditable && e.key === 'F2') {
+        e.preventDefault();
+        if (selected) doRenameStart(selected);
+        return;
+      }
+      if (!isEditable && (e.key === 'Delete' || e.key === 'Del')) {
+        e.preventDefault();
+        if (selected) void doDelete([selected]);
+        return;
+      }
       if (!isEditable && e.key === 'Backspace') {
         e.preventDefault();
         void goUp();
@@ -160,23 +401,7 @@ export function App(): JSX.Element {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [section, goBack, goForward, goUp]);
-
-  const onOpen = useCallback(
-    (node: FileNode) => {
-      if (node.isDir) navigateTo(node.path);
-      else {
-        setSelected(node.path);
-        setPreviewOpen(true);
-      }
-    },
-    [navigateTo]
-  );
-
-  const progressPct = useMemo(() => {
-    if (!progress || progress.scanned === 0) return 4;
-    return Math.min(100, ((progress.indexed + progress.skipped) / progress.scanned) * 100);
-  }, [progress]);
+  }, [section, goBack, goForward, goUp, selected, doNewFolder, doNewFile, doCopy, doCut, doPaste, doRenameStart, doDelete]);
 
   return (
     <div className="app">
@@ -237,6 +462,15 @@ export function App(): JSX.Element {
                         </button>
                       ))}
                     </div>
+                    <div className="op-group" role="group" aria-label="File operations">
+                      <button className="seg" onClick={() => void doNewFolder()} title="New folder (Ctrl+Shift+N)">➕ Folder</button>
+                      <button className="seg" onClick={() => void doNewFile()} title="New file (Ctrl+N)">➕ File</button>
+                      <button className="seg" onClick={() => selected && doRenameStart(selected)} disabled={!selected} title="Rename (F2)">✏️ Rename</button>
+                      <button className="seg danger" onClick={() => selected && void doDelete([selected])} disabled={!selected} title="Delete (Del)">🗑 Delete</button>
+                      <button className="seg" onClick={() => selected && doCut([selected])} disabled={!selected} title="Cut (Ctrl+X)">✂ Cut</button>
+                      <button className="seg" onClick={() => selected && doCopy([selected])} disabled={!selected} title="Copy (Ctrl+C)">⧉ Copy</button>
+                      <button className="seg" onClick={() => void doPaste()} disabled={!clipboard} title="Paste (Ctrl+V)">📋 Paste</button>
+                    </div>
                     <input
                       className="filter-input"
                       placeholder="Filter…"
@@ -267,7 +501,12 @@ export function App(): JSX.Element {
                     </button>
                   </div>
                   <div className={`explorer-body${previewOpen ? ' with-preview' : ''}`}>
-                    <div className="file-list-pane">
+                    <div
+                      className={`file-list-pane${dropActive ? ' drop-active' : ''}`}
+                      onDragOver={onDragOverRoot}
+                      onDragLeave={onDragLeaveRoot}
+                      onDrop={onDropRoot}
+                    >
                       <FileList
                         path={currentPath}
                         selected={selected}
@@ -282,6 +521,12 @@ export function App(): JSX.Element {
                         }}
                         filter={filter}
                         refreshKey={refreshKey}
+                        renamingPath={renamingPath}
+                        onCommitRename={doRenameCommit}
+                        onCancelRename={() => setRenamingPath(null)}
+                        onContextMenuRow={onContextMenuRow}
+                        onContextMenuEmpty={onContextMenuEmpty}
+                        cutPaths={cutPaths}
                       />
                     </div>
                     {previewOpen && (
@@ -318,6 +563,12 @@ export function App(): JSX.Element {
           </div>
         )}
       </div>
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+      {toast && (
+        <div className={`toast toast-${toast.kind}`} role="status">
+          {toast.text}
+        </div>
+      )}
     </div>
   );
 }

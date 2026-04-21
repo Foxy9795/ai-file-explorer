@@ -26,6 +26,14 @@ const api: AfeApi = {
   providerName: () => ipcRenderer.invoke('afe:providerName'),
   getShowHidden: () => ipcRenderer.invoke('afe:getShowHidden'),
   setShowHidden: (v) => ipcRenderer.invoke('afe:setShowHidden', v),
+  newFile: (dir, name) => ipcRenderer.invoke('afe:newFile', dir, name),
+  newFolder: (dir, name) => ipcRenderer.invoke('afe:newFolder', dir, name),
+  rename: (oldPath, newName) => ipcRenderer.invoke('afe:rename', oldPath, newName),
+  trash: (paths) => ipcRenderer.invoke('afe:trash', paths),
+  copyPaths: (paths, destDir) => ipcRenderer.invoke('afe:copyPaths', paths, destDir),
+  movePaths: (paths, destDir) => ipcRenderer.invoke('afe:movePaths', paths, destDir),
+  pathExists: (p) => ipcRenderer.invoke('afe:pathExists', p),
+  revealInOS: (p) => ipcRenderer.invoke('afe:revealInOS', p),
 };
 
 contextBridge.exposeInMainWorld('afe', api);
