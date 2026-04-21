@@ -10,7 +10,7 @@ interface Props {
   viewMode: ViewMode;
   showHidden: boolean;
   onClose: () => void;
-  onSwap: () => void;
+  onSwap: (currentSecondaryPath: string) => void;
 }
 
 export function SecondaryPane({
@@ -101,7 +101,7 @@ export function SecondaryPane({
           onUp={goUp}
           onNavigate={navigateTo}
         />
-        <button className="icon-btn" onClick={onSwap} title="Swap panes">
+        <button className="icon-btn" onClick={() => onSwap(path)} title="Swap panes">
           ⇄
         </button>
         <button className="icon-btn" onClick={onClose} title="Close split">

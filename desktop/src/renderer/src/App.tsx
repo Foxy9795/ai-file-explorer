@@ -603,11 +603,10 @@ export function App(): JSX.Element {
                         viewMode={viewMode}
                         showHidden={showHidden}
                         onClose={() => setSplitOn(false)}
-                        onSwap={() => {
-                          const sp = secondaryPath;
+                        onSwap={(secCurrent) => {
                           setSecondaryPath(currentPath);
                           setSplitKey((n) => n + 1);
-                          if (sp) navigateTo(sp);
+                          navigateTo(secCurrent);
                         }}
                       />
                     )}
