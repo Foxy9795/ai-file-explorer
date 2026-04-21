@@ -77,6 +77,7 @@ export function App(): JSX.Element {
       setHistoryForward([]);
       setCurrentPath(p);
       setFilter('');
+      setSelected(null);
     },
     [currentPath]
   );
@@ -88,6 +89,7 @@ export function App(): JSX.Element {
       setHistoryForward((f) => [currentPath, ...f]);
       setCurrentPath(prev);
       setFilter('');
+      setSelected(null);
       return back.slice(0, -1);
     });
   }, [currentPath]);
@@ -99,6 +101,7 @@ export function App(): JSX.Element {
       setHistoryBack((b) => [...b, currentPath]);
       setCurrentPath(next);
       setFilter('');
+      setSelected(null);
       return fwd.slice(1);
     });
   }, [currentPath]);
