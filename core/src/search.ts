@@ -6,6 +6,20 @@ export interface SearchOptions {
   topK?: number;
 }
 
+const STOPWORDS = new Set([
+  'a', 'an', 'and', 'any', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'has', 'have',
+  'i', 'in', 'is', 'it', 'its', 'of', 'on', 'or', 'that', 'the', 'to', 'was', 'were',
+  'what', 'when', 'where', 'which', 'who', 'why', 'with', 'you', 'your', 'me', 'my',
+  'about', 'into', 'this', 'these', 'those', 'do', 'does', 'did',
+]);
+
+function tokenize(s: string): string[] {
+  return s
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length >= 2 && !STOPWORDS.has(t));
+}
+
 export async function search(
   store: Store,
   provider: AIProvider,
@@ -15,6 +29,8 @@ export async function search(
   const topK = opts.topK ?? 10;
   const [qEmb] = await provider.embed([query]);
   if (!qEmb) return [];
+  const qTokens = Array.from(new Set(tokenize(query)));
+
   const chunks = store.allChunks();
   const scored = chunks.map((c) => ({ c, score: cosine(c.embedding, qEmb) }));
   scored.sort((a, b) => b.score - a.score);
@@ -34,10 +50,28 @@ export async function search(
   for (const [fileId, info] of fileBest) {
     const file = store.fileById(fileId);
     if (!file) continue;
-    hits.push({ file, score: info.score, snippet: info.snippet, chunkOrdinal: info.chunkOrdinal });
+    const lex = lexicalBoost(file.name, info.snippet, qTokens);
+    hits.push({
+      file,
+      score: info.score + lex,
+      snippet: info.snippet,
+      chunkOrdinal: info.chunkOrdinal,
+    });
   }
   hits.sort((a, b) => b.score - a.score);
   return hits.slice(0, topK);
+}
+
+function lexicalBoost(filename: string, snippet: string, qTokens: string[]): number {
+  if (qTokens.length === 0) return 0;
+  const nameTokens = new Set(tokenize(filename));
+  const nameHits = qTokens.filter((t) => nameTokens.has(t)).length;
+  const nameFrac = nameHits / qTokens.length;
+  const snippetLower = snippet.toLowerCase();
+  let contentHits = 0;
+  for (const t of qTokens) if (snippetLower.includes(t)) contentHits += 1;
+  const contentFrac = contentHits / qTokens.length;
+  return 0.25 * nameFrac + 0.05 * contentFrac;
 }
 
 function truncate(s: string, max: number): string {
