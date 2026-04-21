@@ -21,6 +21,7 @@ export function App(): JSX.Element {
   const [filter, setFilter] = useState('');
   const [previewOpen, setPreviewOpen] = useState(true);
   const [aiPanelOpen, setAIPanelOpen] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
   const [indexing, setIndexing] = useState(false);
   const [progress, setProgress] = useState<{ scanned: number; indexed: number; skipped: number; currentPath?: string } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -32,8 +33,17 @@ export function App(): JSX.Element {
       if (r) setCurrentPath(r);
       const p = await window.afe.providerName();
       setProvider(p);
+      const sh = await window.afe.getShowHidden();
+      setShowHidden(sh);
     })();
   }, []);
+
+  const toggleHidden = useCallback(async () => {
+    const next = !showHidden;
+    await window.afe.setShowHidden(next);
+    setShowHidden(next);
+    setRefreshKey((n) => n + 1);
+  }, [showHidden]);
 
   useEffect(() => {
     return window.afe.onIndexProgress((p) => {
@@ -111,6 +121,46 @@ export function App(): JSX.Element {
     const parent = await window.afe.parentDir(currentPath);
     if (parent && parent !== currentPath) navigateTo(parent);
   }, [currentPath, navigateTo]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (section !== 'explorer') return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      const isEditable =
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        target?.isContentEditable === true;
+
+      if (e.altKey && e.key === 'ArrowLeft') {
+        e.preventDefault();
+        goBack();
+        return;
+      }
+      if (e.altKey && e.key === 'ArrowRight') {
+        e.preventDefault();
+        goForward();
+        return;
+      }
+      if (e.altKey && e.key === 'ArrowUp') {
+        e.preventDefault();
+        void goUp();
+        return;
+      }
+      if (e.key === 'F5') {
+        e.preventDefault();
+        setRefreshKey((n) => n + 1);
+        return;
+      }
+      if (!isEditable && e.key === 'Backspace') {
+        e.preventDefault();
+        void goUp();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [section, goBack, goForward, goUp]);
 
   const onOpen = useCallback(
     (node: FileNode) => {
@@ -194,6 +244,20 @@ export function App(): JSX.Element {
                       onChange={(e) => setFilter(e.target.value)}
                     />
                     <div className="toolbar-spacer" />
+                    <button
+                      className="seg"
+                      onClick={() => setRefreshKey((n) => n + 1)}
+                      title="Refresh (F5)"
+                    >
+                      ⟳
+                    </button>
+                    <button
+                      className={`seg${showHidden ? ' active' : ''}`}
+                      onClick={toggleHidden}
+                      title="Show hidden files (dotfiles)"
+                    >
+                      👁‍🗨 Hidden
+                    </button>
                     <button
                       className={`seg${previewOpen ? ' active' : ''}`}
                       onClick={() => setPreviewOpen((v) => !v)}

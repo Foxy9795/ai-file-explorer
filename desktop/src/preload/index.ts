@@ -24,6 +24,8 @@ const api: AfeApi = {
   tag: (p) => ipcRenderer.invoke('afe:tag', p),
   similar: (p) => ipcRenderer.invoke('afe:similar', p),
   providerName: () => ipcRenderer.invoke('afe:providerName'),
+  getShowHidden: () => ipcRenderer.invoke('afe:getShowHidden'),
+  setShowHidden: (v) => ipcRenderer.invoke('afe:setShowHidden', v),
 };
 
 contextBridge.exposeInMainWorld('afe', api);

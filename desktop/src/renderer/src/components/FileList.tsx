@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FileNode } from '../../../preload/types';
 import type { SortDir, SortKey, ViewMode } from '../types';
 
@@ -47,6 +47,8 @@ export function FileList({
     };
   }, [path, refreshKey]);
 
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
   const shown = useMemo(() => {
     if (!entries) return [];
     let list = entries;
@@ -77,6 +79,48 @@ export function FileList({
     return sorted;
   }, [entries, filter, sortKey, sortDir]);
 
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (shown.length === 0) return;
+      const idx = selected ? shown.findIndex((e) => e.path === selected) : -1;
+      let next = idx;
+      if (e.key === 'ArrowDown') next = Math.min(shown.length - 1, idx + 1);
+      else if (e.key === 'ArrowUp') next = Math.max(0, idx === -1 ? 0 : idx - 1);
+      else if (e.key === 'Home') next = 0;
+      else if (e.key === 'End') next = shown.length - 1;
+      else if (e.key === 'Enter') {
+        if (idx >= 0) {
+          e.preventDefault();
+          onOpen(shown[idx]!);
+        }
+        return;
+      } else {
+        return;
+      }
+      if (next !== idx && next >= 0) {
+        e.preventDefault();
+        onSelect(shown[next]!.path);
+      }
+    },
+    [shown, selected, onSelect, onOpen]
+  );
+
+  useEffect(() => {
+    if (!selected) return;
+    const root = containerRef.current;
+    if (!root) return;
+    const el = root.querySelector(`[data-fpath="${CSS.escape(selected)}"]`) as HTMLElement | null;
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }, [selected]);
+
+  useEffect(() => {
+    if (entries && entries.length > 0) {
+      containerRef.current?.focus({ preventScroll: true });
+    }
+  }, [entries]);
+
   if (error) return <div className="placeholder err">Cannot read folder: {error}</div>;
   if (entries === null) return <div className="placeholder">Loading…</div>;
   if (shown.length === 0) {
@@ -87,8 +131,9 @@ export function FileList({
     );
   }
 
+  let inner: JSX.Element;
   if (viewMode === 'list') {
-    return (
+    inner = (
       <ListView
         entries={shown}
         selected={selected}
@@ -99,11 +144,22 @@ export function FileList({
         onSortChange={onSortChange}
       />
     );
+  } else if (viewMode === 'grid') {
+    inner = <GridView entries={shown} selected={selected} onSelect={onSelect} onOpen={onOpen} />;
+  } else {
+    inner = <GalleryView entries={shown} selected={selected} onSelect={onSelect} onOpen={onOpen} />;
   }
-  if (viewMode === 'grid') {
-    return <GridView entries={shown} selected={selected} onSelect={onSelect} onOpen={onOpen} />;
-  }
-  return <GalleryView entries={shown} selected={selected} onSelect={onSelect} onOpen={onOpen} />;
+
+  return (
+    <div
+      ref={containerRef}
+      className="file-list-root"
+      tabIndex={0}
+      onKeyDown={onKeyDown}
+    >
+      {inner}
+    </div>
+  );
 }
 
 interface ViewProps {
@@ -143,6 +199,7 @@ function ListView({
         {entries.map((e) => (
           <div
             key={e.path}
+            data-fpath={e.path}
             className={`file-row${selected === e.path ? ' selected' : ''}`}
             onClick={() => onSelect(e.path)}
             onDoubleClick={() => onOpen(e)}
@@ -168,6 +225,7 @@ function GridView({ entries, selected, onSelect, onOpen }: ViewProps): JSX.Eleme
       {entries.map((e) => (
         <div
           key={e.path}
+          data-fpath={e.path}
           className={`grid-cell${selected === e.path ? ' selected' : ''}`}
           onClick={() => onSelect(e.path)}
           onDoubleClick={() => onOpen(e)}
@@ -187,6 +245,7 @@ function GalleryView({ entries, selected, onSelect, onOpen }: ViewProps): JSX.El
       {entries.map((e) => (
         <div
           key={e.path}
+          data-fpath={e.path}
           className={`gallery-cell${selected === e.path ? ' selected' : ''}`}
           onClick={() => onSelect(e.path)}
           onDoubleClick={() => onOpen(e)}

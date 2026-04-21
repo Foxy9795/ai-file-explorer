@@ -39,6 +39,8 @@ export interface AfeApi {
   tag: (path: string) => Promise<string[]>;
   similar: (path: string) => Promise<SearchHit[]>;
   providerName: () => Promise<string>;
+  getShowHidden: () => Promise<boolean>;
+  setShowHidden: (v: boolean) => Promise<boolean>;
 }
 
 declare global {

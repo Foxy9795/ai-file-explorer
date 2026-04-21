@@ -23,21 +23,26 @@ const settingsPath = path.join(dataDir, 'settings.json');
 
 interface Settings {
   root: string | null;
+  showHidden?: boolean;
 }
+
+let currentSettings: Settings = { root: null, showHidden: false };
 
 function readSettings(): Settings {
   try {
-    if (!existsSync(settingsPath)) return { root: null };
+    if (!existsSync(settingsPath)) return { root: null, showHidden: false };
     const raw = require('node:fs').readFileSync(settingsPath, 'utf-8');
-    return JSON.parse(raw) as Settings;
+    const parsed = JSON.parse(raw) as Settings;
+    return { root: parsed.root ?? null, showHidden: parsed.showHidden ?? false };
   } catch {
-    return { root: null };
+    return { root: null, showHidden: false };
   }
 }
 
 async function writeSettings(s: Settings): Promise<void> {
   mkdirSync(dataDir, { recursive: true });
-  await fs.writeFile(settingsPath, JSON.stringify(s, null, 2));
+  currentSettings = { ...currentSettings, ...s };
+  await fs.writeFile(settingsPath, JSON.stringify(currentSettings, null, 2));
 }
 
 function openStore(root: string): Store {
@@ -82,10 +87,10 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  const settings = readSettings();
-  if (settings.root) {
+  currentSettings = readSettings();
+  if (currentSettings.root) {
     try {
-      openStore(settings.root);
+      openStore(currentSettings.root);
     } catch (err) {
       console.error('Failed to open store for persisted root', err);
     }
@@ -104,6 +109,13 @@ app.on('window-all-closed', () => {
 
 function registerIpc(): void {
   ipcMain.handle('afe:providerName', () => provider.name);
+
+  ipcMain.handle('afe:getShowHidden', () => currentSettings.showHidden === true);
+
+  ipcMain.handle('afe:setShowHidden', async (_e, v: boolean) => {
+    await writeSettings({ root: currentSettings.root ?? null, showHidden: !!v });
+    return currentSettings.showHidden === true;
+  });
 
   ipcMain.handle('afe:chooseFolder', async () => {
     const res = await dialog.showOpenDialog({ properties: ['openDirectory'] });
@@ -127,9 +139,10 @@ function registerIpc(): void {
     const s = requireStore();
     const target = dir ? dir : s.root;
     const entries = await fs.readdir(target, { withFileTypes: true });
+    const showHidden = currentSettings.showHidden === true;
     const out = await Promise.all(
       entries
-        .filter((e) => !e.name.startsWith('.'))
+        .filter((e) => showHidden || !e.name.startsWith('.'))
         .map(async (e) => {
           const full = path.join(target, e.name);
           let size: number | undefined;
