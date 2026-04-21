@@ -1,20 +1,35 @@
-import { useCallback, useEffect, useState } from 'react';
-import { FileTree } from './components/FileTree';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AIPanel } from './components/AIPanel';
+import { AddressBar } from './components/AddressBar';
+import { FileList } from './components/FileList';
 import { FilePreview } from './components/FilePreview';
+import { NavRail } from './components/NavRail';
+import type { FileNode } from '../../preload/types';
+import type { Section, SortDir, SortKey, ViewMode } from './types';
 
 export function App(): JSX.Element {
   const [root, setRoot] = useState<string | null>(null);
   const [provider, setProvider] = useState<string>('');
+  const [section, setSection] = useState<Section>('explorer');
+  const [currentPath, setCurrentPath] = useState<string | null>(null);
+  const [historyBack, setHistoryBack] = useState<string[]>([]);
+  const [historyForward, setHistoryForward] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [filter, setFilter] = useState('');
+  const [previewOpen, setPreviewOpen] = useState(true);
+  const [aiPanelOpen, setAIPanelOpen] = useState(false);
   const [indexing, setIndexing] = useState(false);
   const [progress, setProgress] = useState<{ scanned: number; indexed: number; skipped: number; currentPath?: string } | null>(null);
-  const [indexBump, setIndexBump] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     (async () => {
       const r = await window.afe.getRoot();
       setRoot(r);
+      if (r) setCurrentPath(r);
       const p = await window.afe.providerName();
       setProvider(p);
     })();
@@ -25,7 +40,7 @@ export function App(): JSX.Element {
       setProgress({ scanned: p.scanned, indexed: p.indexed, skipped: p.skipped, currentPath: p.currentPath });
       if (p.done) {
         setIndexing(false);
-        setIndexBump((n) => n + 1);
+        setRefreshKey((n) => n + 1);
       }
     });
   }, []);
@@ -34,8 +49,12 @@ export function App(): JSX.Element {
     const r = await window.afe.chooseFolder();
     if (r) {
       setRoot(r);
+      setCurrentPath(r);
+      setHistoryBack([]);
+      setHistoryForward([]);
       setSelected(null);
       setProgress(null);
+      setFilter('');
     }
   }, []);
 
@@ -51,6 +70,61 @@ export function App(): JSX.Element {
     }
   }, [indexing, root]);
 
+  const navigateTo = useCallback(
+    (p: string) => {
+      if (!currentPath || p === currentPath) return;
+      setHistoryBack((h) => [...h, currentPath]);
+      setHistoryForward([]);
+      setCurrentPath(p);
+      setFilter('');
+    },
+    [currentPath]
+  );
+
+  const goBack = useCallback(() => {
+    setHistoryBack((back) => {
+      if (back.length === 0 || !currentPath) return back;
+      const prev = back[back.length - 1]!;
+      setHistoryForward((f) => [currentPath, ...f]);
+      setCurrentPath(prev);
+      setFilter('');
+      return back.slice(0, -1);
+    });
+  }, [currentPath]);
+
+  const goForward = useCallback(() => {
+    setHistoryForward((fwd) => {
+      if (fwd.length === 0 || !currentPath) return fwd;
+      const next = fwd[0]!;
+      setHistoryBack((b) => [...b, currentPath]);
+      setCurrentPath(next);
+      setFilter('');
+      return fwd.slice(1);
+    });
+  }, [currentPath]);
+
+  const goUp = useCallback(async () => {
+    if (!currentPath) return;
+    const parent = await window.afe.parentDir(currentPath);
+    if (parent && parent !== currentPath) navigateTo(parent);
+  }, [currentPath, navigateTo]);
+
+  const onOpen = useCallback(
+    (node: FileNode) => {
+      if (node.isDir) navigateTo(node.path);
+      else {
+        setSelected(node.path);
+        setPreviewOpen(true);
+      }
+    },
+    [navigateTo]
+  );
+
+  const progressPct = useMemo(() => {
+    if (!progress || progress.scanned === 0) return 4;
+    return Math.min(100, ((progress.indexed + progress.skipped) / progress.scanned) * 100);
+  }, [progress]);
+
   return (
     <div className="app">
       <div className="topbar">
@@ -62,58 +136,136 @@ export function App(): JSX.Element {
         <button className="primary" onClick={startIndex} disabled={!root || indexing}>
           {indexing ? <><span className="spinner" /> Indexing…</> : 'Index folder'}
         </button>
-        <div className="root-label" title={root ?? ''}>
-          {root ?? 'No folder selected'}
-        </div>
+        {indexing && progress && (
+          <div className="topbar-progress-text" title={progress.currentPath ?? ''}>
+            {progress.indexed + progress.skipped}/{progress.scanned}
+          </div>
+        )}
+        <div className="topbar-spacer" />
         <div className="provider">{provider}</div>
       </div>
       {indexing && (
         <div className="progress-bar">
-          <div
-            className="fill"
-            style={{
-              width: progress && progress.scanned > 0
-                ? `${Math.min(100, ((progress.indexed + progress.skipped) / progress.scanned) * 100)}%`
-                : '4%',
-            }}
-          />
+          <div className="fill" style={{ width: `${progressPct}%` }} />
         </div>
       )}
-      <div className="main">
-        <div className="pane">
-          <div className="pane-header">Files</div>
-          <div className="pane-body">
-            {root ? (
-              <FileTree
-                root={root}
-                selected={selected}
-                onSelect={(p) => setSelected(p)}
-                indexBump={indexBump}
-              />
-            ) : (
-              <div className="placeholder">
-                <div className="big">📁</div>
-                <div>Click “Open folder…” to pick a folder to explore.</div>
-              </div>
-            )}
-          </div>
+      <div className="shell">
+        <NavRail
+          section={section}
+          onChange={setSection}
+          aiPanelOpen={aiPanelOpen}
+          onToggleAI={() => setAIPanelOpen((v) => !v)}
+        />
+        <div className="workspace">
+          {section === 'explorer' && (
+            <>
+              {root && currentPath ? (
+                <>
+                  <AddressBar
+                    root={root}
+                    currentPath={currentPath}
+                    canBack={historyBack.length > 0}
+                    canForward={historyForward.length > 0}
+                    onBack={goBack}
+                    onForward={goForward}
+                    onUp={goUp}
+                    onNavigate={navigateTo}
+                  />
+                  <div className="explorer-toolbar">
+                    <div className="view-toggle">
+                      {(['list', 'grid', 'gallery'] as ViewMode[]).map((m) => (
+                        <button
+                          key={m}
+                          className={`seg${viewMode === m ? ' active' : ''}`}
+                          onClick={() => setViewMode(m)}
+                          title={m[0]!.toUpperCase() + m.slice(1)}
+                        >
+                          {m === 'list' ? '☰' : m === 'grid' ? '⊞' : '▣'}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      className="filter-input"
+                      placeholder="Filter…"
+                      value={filter}
+                      onChange={(e) => setFilter(e.target.value)}
+                    />
+                    <div className="toolbar-spacer" />
+                    <button
+                      className={`seg${previewOpen ? ' active' : ''}`}
+                      onClick={() => setPreviewOpen((v) => !v)}
+                      title="Toggle preview"
+                    >
+                      👁 Preview
+                    </button>
+                  </div>
+                  <div className={`explorer-body${previewOpen ? ' with-preview' : ''}`}>
+                    <div className="file-list-pane">
+                      <FileList
+                        path={currentPath}
+                        selected={selected}
+                        onSelect={setSelected}
+                        onOpen={onOpen}
+                        viewMode={viewMode}
+                        sortKey={sortKey}
+                        sortDir={sortDir}
+                        onSortChange={(k, d) => {
+                          setSortKey(k);
+                          setSortDir(d);
+                        }}
+                        filter={filter}
+                        refreshKey={refreshKey}
+                      />
+                    </div>
+                    {previewOpen && (
+                      <div className="preview-pane">
+                        <div className="pane-header">
+                          {selected ? basename(selected) : 'Preview'}
+                        </div>
+                        <div className="pane-body">
+                          {selected ? (
+                            <FilePreview path={selected} />
+                          ) : (
+                            <div className="placeholder">Select a file to preview its contents.</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="placeholder big-placeholder">
+                  <div className="emoji">📁</div>
+                  <div>Click "Open folder…" to pick a folder to explore.</div>
+                </div>
+              )}
+            </>
+          )}
+          {section === 'favorites' && <ComingSoon title="Favorites" hint="Pin folders for quick access. Coming in A.4." />}
+          {section === 'recent' && <ComingSoon title="Recent" hint="Jump back into recently visited folders. Coming in A.4." />}
+          {section === 'settings' && <ComingSoon title="Settings" hint="Theme, provider config, JSON export/import. Coming in Phase F." />}
         </div>
-        <div className="pane">
-          <div className="pane-header">
-            {selected ? selected : 'Preview'}
+        {aiPanelOpen && (
+          <div className="ai-pane">
+            <AIPanel selected={selected} root={root} />
           </div>
-          <div className="pane-body">
-            {selected ? (
-              <FilePreview path={selected} />
-            ) : (
-              <div className="placeholder">Select a file to preview its contents.</div>
-            )}
-          </div>
-        </div>
-        <div className="pane">
-          <AIPanel selected={selected} root={root} />
-        </div>
+        )}
       </div>
     </div>
   );
+}
+
+function ComingSoon({ title, hint }: { title: string; hint: string }): JSX.Element {
+  return (
+    <div className="placeholder big-placeholder">
+      <div className="emoji">🛠</div>
+      <div className="big">{title}</div>
+      <div className="dim">{hint}</div>
+    </div>
+  );
+}
+
+function basename(p: string): string {
+  const parts = p.split(/[/\\]/).filter(Boolean);
+  return parts[parts.length - 1] ?? p;
 }

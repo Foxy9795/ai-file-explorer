@@ -14,11 +14,21 @@ export interface IndexStats {
   scanned: number;
 }
 
+export interface StatInfo {
+  size: number;
+  mtime: number;
+  isDir: boolean;
+}
+
 export interface AfeApi {
   chooseFolder: () => Promise<string | null>;
   getRoot: () => Promise<string | null>;
   setRoot: (root: string) => Promise<void>;
   listDir: (dir: string) => Promise<FileNode[]>;
+  stat: (path: string) => Promise<StatInfo | null>;
+  parentDir: (path: string) => Promise<string>;
+  pathSep: () => Promise<string>;
+  joinPath: (a: string, b: string) => Promise<string>;
   readFile: (path: string) => Promise<string>;
   indexStatus: () => Promise<{ indexing: boolean; root: string | null; stats: IndexStats | null }>;
   startIndex: () => Promise<void>;

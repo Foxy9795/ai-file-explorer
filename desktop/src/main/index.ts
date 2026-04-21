@@ -127,22 +127,46 @@ function registerIpc(): void {
     const s = requireStore();
     const target = dir ? dir : s.root;
     const entries = await fs.readdir(target, { withFileTypes: true });
-    const out = entries
-      .filter((e) => !e.name.startsWith('.'))
-      .map((e) => {
-        const full = path.join(target, e.name);
-        return {
-          name: e.name,
-          path: full,
-          isDir: e.isDirectory(),
-        };
-      });
+    const out = await Promise.all(
+      entries
+        .filter((e) => !e.name.startsWith('.'))
+        .map(async (e) => {
+          const full = path.join(target, e.name);
+          let size: number | undefined;
+          let mtime: number | undefined;
+          try {
+            const st = await fs.stat(full);
+            size = st.size;
+            mtime = st.mtimeMs;
+          } catch {
+            // fall through with undefined size/mtime (e.g. symlink to missing file)
+          }
+          return { name: e.name, path: full, isDir: e.isDirectory(), size, mtime };
+        })
+    );
     out.sort((a, b) => {
       if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
       return a.name.localeCompare(b.name);
     });
     return out;
   });
+
+  ipcMain.handle('afe:stat', async (_e, p: string) => {
+    try {
+      const st = await fs.stat(p);
+      return {
+        size: st.size,
+        mtime: st.mtimeMs,
+        isDir: st.isDirectory(),
+      };
+    } catch {
+      return null;
+    }
+  });
+
+  ipcMain.handle('afe:parentDir', (_e, p: string) => path.dirname(p));
+  ipcMain.handle('afe:pathSep', () => path.sep);
+  ipcMain.handle('afe:joinPath', (_e, a: string, b: string) => path.join(a, b));
 
   ipcMain.handle('afe:readFile', async (_e, p: string) => {
     try {

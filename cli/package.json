@@ -7,7 +7,7 @@
     "afe": "./dist/bin.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && chmod +x dist/bin.js",
+    "build": "tsc -p tsconfig.json && node -e \"try{require('fs').chmodSync('dist/bin.js',0o755)}catch{}\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src --ext .ts",
     "dev": "tsx src/bin.ts"
