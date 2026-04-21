@@ -11,6 +11,7 @@ const api: AfeApi = {
   pathSep: () => ipcRenderer.invoke('afe:pathSep'),
   joinPath: (a, b) => ipcRenderer.invoke('afe:joinPath', a, b),
   readFile: (p) => ipcRenderer.invoke('afe:readFile', p),
+  readBinaryBase64: (p, maxBytes) => ipcRenderer.invoke('afe:readBinaryBase64', p, maxBytes),
   indexStatus: () => ipcRenderer.invoke('afe:indexStatus'),
   startIndex: () => ipcRenderer.invoke('afe:startIndex'),
   onIndexProgress: (cb) => {

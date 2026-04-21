@@ -30,6 +30,7 @@ export interface AfeApi {
   pathSep: () => Promise<string>;
   joinPath: (a: string, b: string) => Promise<string>;
   readFile: (path: string) => Promise<string>;
+  readBinaryBase64: (path: string, maxBytes?: number) => Promise<{ base64: string; size: number }>;
   indexStatus: () => Promise<{ indexing: boolean; root: string | null; stats: IndexStats | null }>;
   startIndex: () => Promise<void>;
   onIndexProgress: (cb: (p: { indexed: number; skipped: number; scanned: number; currentPath?: string; done: boolean }) => void) => () => void;

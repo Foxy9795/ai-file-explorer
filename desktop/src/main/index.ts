@@ -345,6 +345,16 @@ function registerIpc(): void {
     }
   });
 
+  ipcMain.handle('afe:readBinaryBase64', async (_e, p: string, maxBytes?: number) => {
+    const stat = await fs.stat(p);
+    const cap = typeof maxBytes === 'number' && maxBytes > 0 ? maxBytes : 25_000_000;
+    if (stat.size > cap) {
+      throw new Error(`File too large (${stat.size} > ${cap})`);
+    }
+    const buf = await fs.readFile(p);
+    return { base64: buf.toString('base64'), size: stat.size };
+  });
+
   ipcMain.handle('afe:indexStatus', () => ({
     indexing,
     root: store?.root ?? null,

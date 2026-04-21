@@ -11,7 +11,9 @@
     "lint": "eslint src --ext .ts,.tsx"
   },
   "dependencies": {
-    "@afe/core": "*"
+    "@afe/core": "*",
+    "highlight.js": "^11.11.1",
+    "marked": "^18.0.2"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.3",
