@@ -6,6 +6,7 @@ import { FileList } from './components/FileList';
 import { FilePreview } from './components/FilePreview';
 import { NavRail } from './components/NavRail';
 import { PlacesSidebar } from './components/PlacesSidebar';
+import { SecondaryPane } from './components/SecondaryPane';
 import type { FileNode } from '../../preload/types';
 import type { Section, SortDir, SortKey, ViewMode } from './types';
 
@@ -36,6 +37,9 @@ export function App(): JSX.Element {
   const [dropActive, setDropActive] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [recent, setRecent] = useState<string[]>([]);
+  const [splitOn, setSplitOn] = useState(false);
+  const [secondaryPath, setSecondaryPath] = useState<string | null>(null);
+  const [splitKey, setSplitKey] = useState(0);
 
   const cutPaths = useMemo(() => new Set(clipboard?.mode === 'cut' ? clipboard.paths : []), [clipboard]);
 
@@ -540,6 +544,21 @@ export function App(): JSX.Element {
                       👁‍🗨 Hidden
                     </button>
                     <button
+                      className={`seg${splitOn ? ' active' : ''}`}
+                      onClick={() => {
+                        if (!splitOn) {
+                          setSecondaryPath(currentPath);
+                          setSplitKey((n) => n + 1);
+                          setSplitOn(true);
+                        } else {
+                          setSplitOn(false);
+                        }
+                      }}
+                      title="Toggle split view"
+                    >
+                      ⇿ Split
+                    </button>
+                    <button
                       className={`seg${previewOpen ? ' active' : ''}`}
                       onClick={() => setPreviewOpen((v) => !v)}
                       title="Toggle preview"
@@ -547,7 +566,7 @@ export function App(): JSX.Element {
                       👁 Preview
                     </button>
                   </div>
-                  <div className={`explorer-body${previewOpen ? ' with-preview' : ''}`}>
+                  <div className={`explorer-body${previewOpen ? ' with-preview' : ''}${splitOn ? ' with-split' : ''}`}>
                     <div
                       className={`file-list-pane${dropActive ? ' drop-active' : ''}`}
                       onDragOver={onDragOverRoot}
@@ -576,6 +595,22 @@ export function App(): JSX.Element {
                         cutPaths={cutPaths}
                       />
                     </div>
+                    {splitOn && secondaryPath && (
+                      <SecondaryPane
+                        key={splitKey}
+                        root={root}
+                        initialPath={secondaryPath}
+                        viewMode={viewMode}
+                        showHidden={showHidden}
+                        onClose={() => setSplitOn(false)}
+                        onSwap={() => {
+                          const sp = secondaryPath;
+                          setSecondaryPath(currentPath);
+                          setSplitKey((n) => n + 1);
+                          if (sp) navigateTo(sp);
+                        }}
+                      />
+                    )}
                     {previewOpen && (
                       <div className="preview-pane">
                         <div className="pane-header">
