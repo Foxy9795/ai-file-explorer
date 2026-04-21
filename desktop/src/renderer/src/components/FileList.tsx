@@ -128,10 +128,10 @@ export function FileList({
   }, [selected]);
 
   useEffect(() => {
-    if (entries && entries.length > 0) {
+    if (entries && entries.length > 0 && !renamingPath) {
       containerRef.current?.focus({ preventScroll: true });
     }
-  }, [entries]);
+  }, [entries, renamingPath]);
 
   if (error) return <div className="placeholder err">Cannot read folder: {error}</div>;
   if (entries === null) return <div className="placeholder">Loading…</div>;
