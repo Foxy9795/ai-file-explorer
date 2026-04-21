@@ -5,6 +5,7 @@ import { ContextMenu, type MenuItem } from './components/ContextMenu';
 import { FileList } from './components/FileList';
 import { FilePreview } from './components/FilePreview';
 import { NavRail } from './components/NavRail';
+import { PlacesSidebar } from './components/PlacesSidebar';
 import type { FileNode } from '../../preload/types';
 import type { Section, SortDir, SortKey, ViewMode } from './types';
 
@@ -33,6 +34,8 @@ export function App(): JSX.Element {
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [dropActive, setDropActive] = useState(false);
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [recent, setRecent] = useState<string[]>([]);
 
   const cutPaths = useMemo(() => new Set(clipboard?.mode === 'cut' ? clipboard.paths : []), [clipboard]);
 
@@ -50,7 +53,39 @@ export function App(): JSX.Element {
       setProvider(p);
       const sh = await window.afe.getShowHidden();
       setShowHidden(sh);
+      const fav = await window.afe.getFavorites();
+      setFavorites(fav);
+      const rec = await window.afe.getRecent();
+      setRecent(rec);
     })();
+  }, []);
+
+  useEffect(() => {
+    if (!currentPath) return;
+    (async () => {
+      const next = await window.afe.pushRecent(currentPath);
+      setRecent(next);
+    })();
+  }, [currentPath]);
+
+  const toggleFavorite = useCallback(async () => {
+    if (!currentPath) return;
+    const isFav = favorites.includes(currentPath);
+    const next = isFav
+      ? await window.afe.removeFavorite(currentPath)
+      : await window.afe.addFavorite(currentPath);
+    setFavorites(next);
+    flashToast('ok', isFav ? 'Removed from favorites' : 'Added to favorites');
+  }, [currentPath, favorites, flashToast]);
+
+  const clearRecent = useCallback(async () => {
+    const next = await window.afe.clearRecent();
+    setRecent(next);
+  }, []);
+
+  const removeFavorite = useCallback(async (p: string) => {
+    const next = await window.afe.removeFavorite(p);
+    setFavorites(next);
   }, []);
 
   const toggleHidden = useCallback(async () => {
@@ -438,7 +473,17 @@ export function App(): JSX.Element {
           {section === 'explorer' && (
             <>
               {root && currentPath ? (
-                <>
+                <div className="explorer-with-places">
+                  <PlacesSidebar
+                    root={root}
+                    favorites={favorites}
+                    recent={recent}
+                    currentPath={currentPath}
+                    onNavigate={navigateTo}
+                    onRemoveFavorite={removeFavorite}
+                    onClearRecent={clearRecent}
+                  />
+                  <div className="explorer-main">
                   <AddressBar
                     root={root}
                     currentPath={currentPath}
@@ -448,6 +493,8 @@ export function App(): JSX.Element {
                     onForward={goForward}
                     onUp={goUp}
                     onNavigate={navigateTo}
+                    isFavorite={favorites.includes(currentPath)}
+                    onToggleFavorite={toggleFavorite}
                   />
                   <div className="explorer-toolbar">
                     <div className="view-toggle">
@@ -544,7 +591,8 @@ export function App(): JSX.Element {
                       </div>
                     )}
                   </div>
-                </>
+                  </div>
+                </div>
               ) : (
                 <div className="placeholder big-placeholder">
                   <div className="emoji">📁</div>
@@ -553,8 +601,6 @@ export function App(): JSX.Element {
               )}
             </>
           )}
-          {section === 'favorites' && <ComingSoon title="Favorites" hint="Pin folders for quick access. Coming in A.4." />}
-          {section === 'recent' && <ComingSoon title="Recent" hint="Jump back into recently visited folders. Coming in A.4." />}
           {section === 'settings' && <ComingSoon title="Settings" hint="Theme, provider config, JSON export/import. Coming in Phase F." />}
         </div>
         {aiPanelOpen && (

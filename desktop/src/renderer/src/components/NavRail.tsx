@@ -9,8 +9,6 @@ interface Props {
 
 const ITEMS: { id: Section; label: string; icon: string }[] = [
   { id: 'explorer', label: 'Explorer', icon: '📁' },
-  { id: 'favorites', label: 'Favorites', icon: '⭐' },
-  { id: 'recent', label: 'Recent', icon: '🕘' },
   { id: 'settings', label: 'Settings', icon: '⚙' },
 ];
 

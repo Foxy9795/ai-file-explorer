@@ -49,6 +49,12 @@ export interface AfeApi {
   movePaths: (paths: string[], destDir: string) => Promise<string[]>;
   pathExists: (p: string) => Promise<boolean>;
   revealInOS: (p: string) => Promise<void>;
+  getFavorites: () => Promise<string[]>;
+  addFavorite: (p: string) => Promise<string[]>;
+  removeFavorite: (p: string) => Promise<string[]>;
+  getRecent: () => Promise<string[]>;
+  pushRecent: (p: string) => Promise<string[]>;
+  clearRecent: () => Promise<string[]>;
 }
 
 declare global {

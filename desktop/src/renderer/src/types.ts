@@ -1,4 +1,4 @@
-export type Section = 'explorer' | 'favorites' | 'recent' | 'settings';
+export type Section = 'explorer' | 'settings';
 
 export type ViewMode = 'list' | 'grid' | 'gallery';
 

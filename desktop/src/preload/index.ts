@@ -34,6 +34,12 @@ const api: AfeApi = {
   movePaths: (paths, destDir) => ipcRenderer.invoke('afe:movePaths', paths, destDir),
   pathExists: (p) => ipcRenderer.invoke('afe:pathExists', p),
   revealInOS: (p) => ipcRenderer.invoke('afe:revealInOS', p),
+  getFavorites: () => ipcRenderer.invoke('afe:getFavorites'),
+  addFavorite: (p) => ipcRenderer.invoke('afe:addFavorite', p),
+  removeFavorite: (p) => ipcRenderer.invoke('afe:removeFavorite', p),
+  getRecent: () => ipcRenderer.invoke('afe:getRecent'),
+  pushRecent: (p) => ipcRenderer.invoke('afe:pushRecent', p),
+  clearRecent: () => ipcRenderer.invoke('afe:clearRecent'),
 };
 
 contextBridge.exposeInMainWorld('afe', api);

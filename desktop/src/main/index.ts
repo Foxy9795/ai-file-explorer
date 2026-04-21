@@ -24,22 +24,32 @@ const settingsPath = path.join(dataDir, 'settings.json');
 interface Settings {
   root: string | null;
   showHidden?: boolean;
+  favorites?: string[];
+  recent?: string[];
 }
 
-let currentSettings: Settings = { root: null, showHidden: false };
+const DEFAULT_SETTINGS: Settings = { root: null, showHidden: false, favorites: [], recent: [] };
+const RECENT_MAX = 20;
+
+let currentSettings: Settings = { ...DEFAULT_SETTINGS };
 
 function readSettings(): Settings {
   try {
-    if (!existsSync(settingsPath)) return { root: null, showHidden: false };
+    if (!existsSync(settingsPath)) return { ...DEFAULT_SETTINGS };
     const raw = require('node:fs').readFileSync(settingsPath, 'utf-8');
     const parsed = JSON.parse(raw) as Settings;
-    return { root: parsed.root ?? null, showHidden: parsed.showHidden ?? false };
+    return {
+      root: parsed.root ?? null,
+      showHidden: parsed.showHidden ?? false,
+      favorites: Array.isArray(parsed.favorites) ? parsed.favorites : [],
+      recent: Array.isArray(parsed.recent) ? parsed.recent : [],
+    };
   } catch {
-    return { root: null, showHidden: false };
+    return { ...DEFAULT_SETTINGS };
   }
 }
 
-async function writeSettings(s: Settings): Promise<void> {
+async function writeSettings(s: Partial<Settings>): Promise<void> {
   mkdirSync(dataDir, { recursive: true });
   currentSettings = { ...currentSettings, ...s };
   await fs.writeFile(settingsPath, JSON.stringify(currentSettings, null, 2));
@@ -113,8 +123,37 @@ function registerIpc(): void {
   ipcMain.handle('afe:getShowHidden', () => currentSettings.showHidden === true);
 
   ipcMain.handle('afe:setShowHidden', async (_e, v: boolean) => {
-    await writeSettings({ root: currentSettings.root ?? null, showHidden: !!v });
+    await writeSettings({ showHidden: !!v });
     return currentSettings.showHidden === true;
+  });
+
+  ipcMain.handle('afe:getFavorites', () => [...(currentSettings.favorites ?? [])]);
+
+  ipcMain.handle('afe:addFavorite', async (_e, p: string) => {
+    const favs = [...(currentSettings.favorites ?? [])];
+    if (!favs.includes(p)) favs.push(p);
+    await writeSettings({ favorites: favs });
+    return favs;
+  });
+
+  ipcMain.handle('afe:removeFavorite', async (_e, p: string) => {
+    const favs = (currentSettings.favorites ?? []).filter((f) => f !== p);
+    await writeSettings({ favorites: favs });
+    return favs;
+  });
+
+  ipcMain.handle('afe:getRecent', () => [...(currentSettings.recent ?? [])]);
+
+  ipcMain.handle('afe:pushRecent', async (_e, p: string) => {
+    const prev = (currentSettings.recent ?? []).filter((r) => r !== p);
+    const next = [p, ...prev].slice(0, RECENT_MAX);
+    await writeSettings({ recent: next });
+    return next;
+  });
+
+  ipcMain.handle('afe:clearRecent', async () => {
+    await writeSettings({ recent: [] });
+    return [];
   });
 
   ipcMain.handle('afe:chooseFolder', async () => {

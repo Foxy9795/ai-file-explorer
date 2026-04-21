@@ -9,6 +9,8 @@ interface Props {
   onForward: () => void;
   onUp: () => void;
   onNavigate: (path: string) => void;
+  isFavorite?: boolean;
+  onToggleFavorite?: () => void;
 }
 
 export function AddressBar({
@@ -20,6 +22,8 @@ export function AddressBar({
   onForward,
   onUp,
   onNavigate,
+  isFavorite,
+  onToggleFavorite,
 }: Props): JSX.Element {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(currentPath);
@@ -52,6 +56,15 @@ export function AddressBar({
       <button className="icon-btn" onClick={onUp} title="Up">
         ↑
       </button>
+      {onToggleFavorite && (
+        <button
+          className={`icon-btn fav-toggle${isFavorite ? ' on' : ''}`}
+          onClick={onToggleFavorite}
+          title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+        >
+          {isFavorite ? '★' : '☆'}
+        </button>
+      )}
       <div className="address-box" onClick={() => !editing && setEditing(true)}>
         {editing ? (
           <input

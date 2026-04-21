@@ -317,6 +317,143 @@ textarea:focus {
   grid-template-columns: 1fr 360px;
 }
 
+.explorer-with-places {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 0;
+  flex: 1;
+}
+
+.explorer-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.places-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 6px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-elev);
+  overflow-y: auto;
+  min-height: 0;
+  font-size: 12px;
+}
+
+.places-sidebar .places-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text);
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.places-sidebar .places-item:hover {
+  background: var(--bg-elev-2);
+}
+
+.places-sidebar .places-item.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.places-sidebar .places-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.places-sidebar .places-icon {
+  width: 16px;
+  text-align: center;
+  opacity: 0.9;
+}
+
+.places-sidebar .places-section {
+  margin-top: 6px;
+}
+
+.places-sidebar .places-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.places-sidebar .places-header:hover {
+  background: var(--bg-elev-2);
+  color: var(--text);
+}
+
+.places-sidebar .places-chev {
+  width: 12px;
+}
+
+.places-sidebar .places-count {
+  margin-left: auto;
+  opacity: 0.6;
+  font-size: 10px;
+}
+
+.places-sidebar .places-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: 2px;
+}
+
+.places-sidebar .places-empty {
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+  opacity: 0.7;
+}
+
+.places-sidebar .places-item.pinned {
+  font-weight: 500;
+}
+
+.places-sidebar .places-act {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  opacity: 0;
+  font-size: 14px;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.places-sidebar .places-item:hover .places-act,
+.places-sidebar .places-header:hover .places-act {
+  opacity: 1;
+}
+
+.places-sidebar .places-act:hover {
+  color: var(--text);
+}
+
+.fav-toggle.on {
+  color: #f5c518;
+}
+
 .file-list-pane,
 .preview-pane {
   min-height: 0;
