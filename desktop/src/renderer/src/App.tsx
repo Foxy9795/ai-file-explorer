@@ -7,7 +7,8 @@ import { FilePreview } from './components/FilePreview';
 import { NavRail } from './components/NavRail';
 import { PlacesSidebar } from './components/PlacesSidebar';
 import { SecondaryPane } from './components/SecondaryPane';
-import type { FileNode } from '../../preload/types';
+import { SettingsPage } from './components/SettingsPage';
+import type { FileNode, UiSettings } from '../../preload/types';
 import type { Section, SortDir, SortKey, ViewMode } from './types';
 
 type Clipboard = { mode: 'copy' | 'cut'; paths: string[] } | null;
@@ -40,6 +41,7 @@ export function App(): JSX.Element {
   const [splitOn, setSplitOn] = useState(false);
   const [secondaryPath, setSecondaryPath] = useState<string | null>(null);
   const [splitKey, setSplitKey] = useState(0);
+  const [uiSettings, setUiSettings] = useState<UiSettings | null>(null);
 
   const cutPaths = useMemo(() => new Set(clipboard?.mode === 'cut' ? clipboard.paths : []), [clipboard]);
 
@@ -61,8 +63,50 @@ export function App(): JSX.Element {
       setFavorites(fav);
       const rec = await window.afe.getRecent();
       setRecent(rec);
+      const ui = await window.afe.getUiSettings();
+      setUiSettings(ui);
     })();
   }, []);
+
+  useEffect(() => {
+    if (!uiSettings) return;
+    const root = document.documentElement;
+    const resolveTheme = (): 'dark' | 'light' => {
+      if (uiSettings.theme === 'auto') {
+        return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      }
+      return uiSettings.theme;
+    };
+    root.setAttribute('data-theme', resolveTheme());
+    root.setAttribute('data-density', uiSettings.density);
+    root.style.setProperty('--accent', uiSettings.accent);
+    root.style.setProperty('--accent-dim', hexWithAlpha(uiSettings.accent, 0.28));
+    root.style.setProperty('--app-opacity', String(uiSettings.opacity));
+  }, [uiSettings]);
+
+  const updateUi = useCallback(async (patch: Partial<UiSettings>) => {
+    const next = await window.afe.setUiSettings(patch);
+    setUiSettings(next);
+  }, []);
+
+  const exportUi = useCallback(async () => {
+    const res = await window.afe.exportSettings();
+    if (res.saved) flashToast('ok', `Saved to ${res.path}`);
+  }, [flashToast]);
+
+  const importUi = useCallback(async () => {
+    const res = await window.afe.importSettings();
+    if (res.imported && res.settings) {
+      setUiSettings(res.settings);
+      flashToast('ok', 'Settings imported');
+    }
+  }, [flashToast]);
+
+  const resetUi = useCallback(async () => {
+    const next = await window.afe.resetUiSettings();
+    setUiSettings(next);
+    flashToast('ok', 'Settings reset to defaults');
+  }, [flashToast]);
 
   useEffect(() => {
     if (!currentPath) return;
@@ -635,7 +679,15 @@ export function App(): JSX.Element {
               )}
             </>
           )}
-          {section === 'settings' && <ComingSoon title="Settings" hint="Theme, provider config, JSON export/import. Coming in Phase F." />}
+          {section === 'settings' && uiSettings && (
+            <SettingsPage
+              settings={uiSettings}
+              onChange={updateUi}
+              onExport={exportUi}
+              onImport={importUi}
+              onReset={resetUi}
+            />
+          )}
         </div>
         {aiPanelOpen && (
           <div className="ai-pane">
@@ -666,4 +718,14 @@ function ComingSoon({ title, hint }: { title: string; hint: string }): JSX.Eleme
 function basename(p: string): string {
   const parts = p.split(/[/\\]/).filter(Boolean);
   return parts[parts.length - 1] ?? p;
+}
+
+function hexWithAlpha(hex: string, alpha: number): string {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex);
+  if (!m) return hex;
+  const n = parseInt(m[1]!, 16);
+  const r = (n >> 16) & 0xff;
+  const g = (n >> 8) & 0xff;
+  const b = n & 0xff;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }

@@ -41,6 +41,11 @@ const api: AfeApi = {
   getRecent: () => ipcRenderer.invoke('afe:getRecent'),
   pushRecent: (p) => ipcRenderer.invoke('afe:pushRecent', p),
   clearRecent: () => ipcRenderer.invoke('afe:clearRecent'),
+  getUiSettings: () => ipcRenderer.invoke('afe:getUiSettings'),
+  setUiSettings: (patch) => ipcRenderer.invoke('afe:setUiSettings', patch),
+  exportSettings: () => ipcRenderer.invoke('afe:exportSettings'),
+  importSettings: () => ipcRenderer.invoke('afe:importSettings'),
+  resetUiSettings: () => ipcRenderer.invoke('afe:resetUiSettings'),
 };
 
 contextBridge.exposeInMainWorld('afe', api);

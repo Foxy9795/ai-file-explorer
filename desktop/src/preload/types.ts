@@ -56,6 +56,31 @@ export interface AfeApi {
   getRecent: () => Promise<string[]>;
   pushRecent: (p: string) => Promise<string[]>;
   clearRecent: () => Promise<string[]>;
+  getUiSettings: () => Promise<UiSettings>;
+  setUiSettings: (patch: Partial<UiSettings>) => Promise<UiSettings>;
+  exportSettings: () => Promise<{ saved: boolean; path?: string }>;
+  importSettings: () => Promise<{ imported: boolean; settings?: UiSettings }>;
+  resetUiSettings: () => Promise<UiSettings>;
+}
+
+export type ThemeMode = 'dark' | 'light' | 'auto';
+export type Density = 'compact' | 'normal' | 'comfy';
+
+export interface UiSettings {
+  theme: ThemeMode;
+  accent: string;
+  density: Density;
+  opacity: number;
+  provider: {
+    ollamaBaseUrl: string;
+    ollamaChatModel: string;
+    ollamaEmbedModel: string;
+    openaiApiKey: string;
+    openaiChatModel: string;
+    openaiEmbedModel: string;
+    anthropicApiKey: string;
+    anthropicChatModel: string;
+  };
 }
 
 declare global {

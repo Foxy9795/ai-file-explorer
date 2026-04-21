@@ -21,21 +21,86 @@ let lastStats: { indexed: number; skipped: number; scanned: number } | null = nu
 const dataDir = path.join(app.getPath('userData'), 'afe');
 const settingsPath = path.join(dataDir, 'settings.json');
 
+type ThemeMode = 'dark' | 'light' | 'auto';
+type Density = 'compact' | 'normal' | 'comfy';
+
+interface UiSettings {
+  theme: ThemeMode;
+  accent: string;
+  density: Density;
+  opacity: number;
+  provider: {
+    ollamaBaseUrl: string;
+    ollamaChatModel: string;
+    ollamaEmbedModel: string;
+    openaiApiKey: string;
+    openaiChatModel: string;
+    openaiEmbedModel: string;
+    anthropicApiKey: string;
+    anthropicChatModel: string;
+  };
+}
+
 interface Settings {
   root: string | null;
   showHidden?: boolean;
   favorites?: string[];
   recent?: string[];
+  ui?: UiSettings;
 }
 
-const DEFAULT_SETTINGS: Settings = { root: null, showHidden: false, favorites: [], recent: [] };
+const DEFAULT_UI: UiSettings = {
+  theme: 'dark',
+  accent: '#7aa7ff',
+  density: 'normal',
+  opacity: 1.0,
+  provider: {
+    ollamaBaseUrl: 'http://127.0.0.1:11434',
+    ollamaChatModel: 'llama3.2:1b',
+    ollamaEmbedModel: 'nomic-embed-text',
+    openaiApiKey: '',
+    openaiChatModel: 'gpt-4o-mini',
+    openaiEmbedModel: 'text-embedding-3-small',
+    anthropicApiKey: '',
+    anthropicChatModel: 'claude-3-5-haiku-latest',
+  },
+};
+
+const DEFAULT_SETTINGS: Settings = {
+  root: null,
+  showHidden: false,
+  favorites: [],
+  recent: [],
+  ui: DEFAULT_UI,
+};
 const RECENT_MAX = 20;
+
+function normalizeUi(input: unknown): UiSettings {
+  const u = (input as Partial<UiSettings>) ?? {};
+  const p = (u.provider ?? {}) as Partial<UiSettings['provider']>;
+  return {
+    theme: u.theme === 'light' || u.theme === 'auto' ? u.theme : 'dark',
+    accent: typeof u.accent === 'string' && /^#[0-9a-fA-F]{6}$/.test(u.accent) ? u.accent : DEFAULT_UI.accent,
+    density: u.density === 'compact' || u.density === 'comfy' ? u.density : 'normal',
+    opacity: typeof u.opacity === 'number' && u.opacity >= 0.6 && u.opacity <= 1 ? u.opacity : 1,
+    provider: {
+      ollamaBaseUrl: p.ollamaBaseUrl ?? DEFAULT_UI.provider.ollamaBaseUrl,
+      ollamaChatModel: p.ollamaChatModel ?? DEFAULT_UI.provider.ollamaChatModel,
+      ollamaEmbedModel: p.ollamaEmbedModel ?? DEFAULT_UI.provider.ollamaEmbedModel,
+      openaiApiKey: p.openaiApiKey ?? '',
+      openaiChatModel: p.openaiChatModel ?? DEFAULT_UI.provider.openaiChatModel,
+      openaiEmbedModel: p.openaiEmbedModel ?? DEFAULT_UI.provider.openaiEmbedModel,
+      anthropicApiKey: p.anthropicApiKey ?? '',
+      anthropicChatModel: p.anthropicChatModel ?? DEFAULT_UI.provider.anthropicChatModel,
+    },
+  };
+}
 
 let currentSettings: Settings = { ...DEFAULT_SETTINGS };
 
 function readSettings(): Settings {
   try {
-    if (!existsSync(settingsPath)) return { ...DEFAULT_SETTINGS };
+    if (!existsSync(settingsPath)) return { ...DEFAULT_SETTINGS, ui: { ...DEFAULT_UI } };
     const raw = require('node:fs').readFileSync(settingsPath, 'utf-8');
     const parsed = JSON.parse(raw) as Settings;
     return {
@@ -43,9 +108,10 @@ function readSettings(): Settings {
       showHidden: parsed.showHidden ?? false,
       favorites: Array.isArray(parsed.favorites) ? parsed.favorites : [],
       recent: Array.isArray(parsed.recent) ? parsed.recent : [],
+      ui: normalizeUi(parsed.ui),
     };
   } catch {
-    return { ...DEFAULT_SETTINGS };
+    return { ...DEFAULT_SETTINGS, ui: { ...DEFAULT_UI } };
   }
 }
 
@@ -154,6 +220,60 @@ function registerIpc(): void {
   ipcMain.handle('afe:clearRecent', async () => {
     await writeSettings({ recent: [] });
     return [];
+  });
+
+  ipcMain.handle('afe:getUiSettings', () => {
+    return currentSettings.ui ?? { ...DEFAULT_UI };
+  });
+
+  ipcMain.handle('afe:setUiSettings', async (_e, patch: Partial<UiSettings>) => {
+    const current = currentSettings.ui ?? { ...DEFAULT_UI };
+    const merged: UiSettings = {
+      ...current,
+      ...patch,
+      provider: { ...current.provider, ...(patch.provider ?? {}) },
+    };
+    const next = normalizeUi(merged);
+    await writeSettings({ ui: next });
+    return next;
+  });
+
+  ipcMain.handle('afe:resetUiSettings', async () => {
+    await writeSettings({ ui: { ...DEFAULT_UI } });
+    return { ...DEFAULT_UI };
+  });
+
+  ipcMain.handle('afe:exportSettings', async () => {
+    const res = await dialog.showSaveDialog({
+      title: 'Export settings',
+      defaultPath: 'afe-settings.json',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (res.canceled || !res.filePath) return { saved: false };
+    const payload = {
+      ui: currentSettings.ui ?? { ...DEFAULT_UI },
+      showHidden: currentSettings.showHidden ?? false,
+      favorites: currentSettings.favorites ?? [],
+    };
+    await fs.writeFile(res.filePath, JSON.stringify(payload, null, 2), 'utf-8');
+    return { saved: true, path: res.filePath };
+  });
+
+  ipcMain.handle('afe:importSettings', async () => {
+    const res = await dialog.showOpenDialog({
+      title: 'Import settings',
+      properties: ['openFile'],
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (res.canceled || res.filePaths.length === 0) return { imported: false };
+    const raw = await fs.readFile(res.filePaths[0]!, 'utf-8');
+    const parsed = JSON.parse(raw) as { ui?: unknown; showHidden?: boolean; favorites?: string[] };
+    const nextUi = normalizeUi(parsed.ui);
+    const patch: Partial<Settings> = { ui: nextUi };
+    if (typeof parsed.showHidden === 'boolean') patch.showHidden = parsed.showHidden;
+    if (Array.isArray(parsed.favorites)) patch.favorites = parsed.favorites.filter((x) => typeof x === 'string');
+    await writeSettings(patch);
+    return { imported: true, settings: nextUi };
   });
 
   ipcMain.handle('afe:chooseFolder', async () => {
