@@ -43,6 +43,8 @@ export async function indexRoot(
 
     const text = await extractText(file.path, file.ext);
     const chunks = chunkText(text);
+    // Yield to the event loop occasionally so the UI doesn't freeze when dealing with many files
+    await new Promise(resolve => setImmediate(resolve));
     const hash = createHash('sha1').update(`${file.size}:${file.mtime}:${chunks.length}`).digest('hex');
     const fileId = store.upsertFile({
       path: file.path,
@@ -57,7 +59,16 @@ export async function indexRoot(
     });
     store.deleteChunks(fileId);
     if (chunks.length > 0) {
-      const embeddings = await provider.embed(chunks);
+      // Process embeddings in batches to avoid overwhelming the provider or event loop
+      const embeddings: number[][] = [];
+      const BATCH_SIZE = 10;
+      for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+        const batch = chunks.slice(i, i + BATCH_SIZE);
+        const batchEmbs = await provider.embed(batch);
+        embeddings.push(...batchEmbs);
+        // Yield to event loop
+        await new Promise(resolve => setImmediate(resolve));
+      }
       store.insertChunks(
         fileId,
         chunks.map((text, i) => ({ ordinal: i, text, embedding: embeddings[i]! }))

@@ -9,6 +9,7 @@ import { PlacesSidebar } from './components/PlacesSidebar';
 import { SecondaryPane } from './components/SecondaryPane';
 import { SettingsPage } from './components/SettingsPage';
 import type { FileNode, UiSettings } from '../../preload/types';
+import { PropertiesModal } from './components/PropertiesModal';
 import type { Section, SortDir, SortKey, ViewMode } from './types';
 
 type Clipboard = { mode: 'copy' | 'cut'; paths: string[] } | null;
@@ -34,6 +35,7 @@ export function App(): JSX.Element {
   const [clipboard, setClipboard] = useState<Clipboard>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const [propsNode, setPropsNode] = useState<FileNode | null>(null);
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [dropActive, setDropActive] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
@@ -345,6 +347,8 @@ export function App(): JSX.Element {
         { separator: true, label: '' },
         { label: 'Rename', shortcut: 'F2', onClick: () => doRenameStart(node.path) },
         { label: 'Delete', shortcut: 'Del', onClick: () => void doDelete([node.path]) },
+        { separator: true, label: '' },
+        { label: 'Properties', shortcut: 'Alt+Enter', onClick: () => setPropsNode(node) },
       ];
       setMenu({ x: e.clientX, y: e.clientY, items });
     },
@@ -696,6 +700,7 @@ export function App(): JSX.Element {
         )}
       </div>
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+      {propsNode && <PropertiesModal node={propsNode} onClose={() => setPropsNode(null)} />}
       {toast && (
         <div className={`toast toast-${toast.kind}`} role="status">
           {toast.text}
@@ -705,15 +710,6 @@ export function App(): JSX.Element {
   );
 }
 
-function ComingSoon({ title, hint }: { title: string; hint: string }): JSX.Element {
-  return (
-    <div className="placeholder big-placeholder">
-      <div className="emoji">🛠</div>
-      <div className="big">{title}</div>
-      <div className="dim">{hint}</div>
-    </div>
-  );
-}
 
 function basename(p: string): string {
   const parts = p.split(/[/\\]/).filter(Boolean);

@@ -3,7 +3,7 @@ import { marked } from 'marked';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/github-dark.css';
 
-type Kind = 'image' | 'markdown' | 'code' | 'text' | 'binary';
+type Kind = 'image' | 'markdown' | 'code' | 'text' | 'binary' | 'pdf';
 
 const CODE_LANGS: Record<string, string> = {
   js: 'javascript', mjs: 'javascript', cjs: 'javascript',
@@ -35,6 +35,7 @@ function getExt(path: string): string {
 
 function kindFor(path: string): Kind {
   const ext = getExt(path);
+  if (ext === 'pdf') return 'pdf';
   if (IMAGE_EXT.has(ext)) return 'image';
   if (MARKDOWN_EXT.has(ext)) return 'markdown';
   if (ext in CODE_LANGS) return 'code';
@@ -54,6 +55,8 @@ export function FilePreview({ path }: { path: string }): JSX.Element {
   if (kind === 'image') return <ImagePreview path={path} />;
   if (kind === 'markdown') return <MarkdownPreview path={path} />;
   if (kind === 'code') return <CodePreview path={path} />;
+  if (kind === 'pdf') return <PdfPreview path={path} />;
+
   return <TextPreview path={path} />;
 }
 
@@ -175,4 +178,25 @@ function formatBytes(n: number): string {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(2)} MB`;
   return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+function PdfPreview({ path }: { path: string }): JSX.Element {
+  const [src, setSrc] = useState<string>('');
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    window.afe.readBinaryBase64(path).then(({ base64 }) => {
+      if (!cancelled) setSrc(`data:application/pdf;base64,${base64}`);
+    }).catch((e: Error) => {
+      if (!cancelled) setErr(e.message);
+    });
+    return () => { cancelled = true; };
+  }, [path]);
+
+  if (err) return <div className="preview preview-text">(error: {err})</div>;
+  if (!src) return <div className="preview preview-text">Loading PDF…</div>;
+  return (
+    <iframe className="preview-pdf" src={src} style={{ width: '100%', height: '100%', border: 'none' }} title="PDF Preview" />
+  );
 }

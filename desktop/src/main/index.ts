@@ -9,12 +9,12 @@ import {
   tagFile,
 } from '@afe/core';
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
-import { promises as fs, existsSync, mkdirSync } from 'node:fs';
+import { promises as fs, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 let mainWindow: BrowserWindow | null = null;
 let store: Store | null = null;
-const provider = createProvider();
+let provider = createProvider();
 let indexing = false;
 let lastStats: { indexed: number; skipped: number; scanned: number } | null = null;
 
@@ -98,11 +98,33 @@ function normalizeUi(input: unknown): UiSettings {
 
 let currentSettings: Settings = { ...DEFAULT_SETTINGS };
 
+function updateProviderFromSettings(ui: UiSettings) {
+  const p = ui.provider;
+  if (p.openaiApiKey) {
+    provider = createProvider({
+      kind: 'openai',
+      chatModel: p.openaiChatModel,
+      embedModel: p.openaiEmbedModel,
+      apiKey: p.openaiApiKey,
+    });
+  } else {
+    provider = createProvider({
+      kind: 'ollama',
+      chatModel: p.ollamaChatModel,
+      embedModel: p.ollamaEmbedModel,
+      baseUrl: p.ollamaBaseUrl,
+    });
+  }
+}
+
+
 function readSettings(): Settings {
   try {
     if (!existsSync(settingsPath)) return { ...DEFAULT_SETTINGS, ui: { ...DEFAULT_UI } };
-    const raw = require('node:fs').readFileSync(settingsPath, 'utf-8');
+    const raw = readFileSync(settingsPath, 'utf-8');
     const parsed = JSON.parse(raw) as Settings;
+    const nextUi = normalizeUi(parsed.ui ?? {});
+    updateProviderFromSettings(nextUi);
     return {
       root: parsed.root ?? null,
       showHidden: parsed.showHidden ?? false,
@@ -234,6 +256,7 @@ function registerIpc(): void {
       provider: { ...current.provider, ...(patch.provider ?? {}) },
     };
     const next = normalizeUi(merged);
+    updateProviderFromSettings(next);
     await writeSettings({ ui: next });
     return next;
   });

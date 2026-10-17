@@ -52,7 +52,7 @@ export interface AIProvider {
 }
 
 export interface ProviderConfig {
-  kind: 'ollama' | 'openai';
+  kind: 'ollama' | 'openai' | 'anthropic';
   chatModel: string;
   embedModel: string;
   baseUrl?: string;

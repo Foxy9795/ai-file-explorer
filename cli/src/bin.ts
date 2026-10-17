@@ -46,7 +46,7 @@ program
     const spinner = ora(`Indexing ${absRoot} (${provider.name})…`).start();
     try {
       const result = await indexRoot(store, provider, {
-        onProgress: (p) => {
+        onProgress: (p: { indexed: number, skipped: number, scanned: number, currentPath?: string }) => {
           spinner.text = `Indexed ${p.indexed} · skipped ${p.skipped} · scanned ${p.scanned} — ${path.basename(p.currentPath ?? '')}`;
         },
       });
@@ -108,7 +108,7 @@ program
       console.log(res.answer.trim());
       if (res.sources.length > 0) {
         console.log(`\n${chalk.bold('Sources:')}`);
-        res.sources.forEach((s, i) => {
+        res.sources.forEach((s: { file: { path: string } }, i: number) => {
           console.log(`  [${i + 1}] ${s.file.path}`);
         });
       }
@@ -154,7 +154,7 @@ program
       const tags = await tagFile(store, provider, path.resolve(file));
       spinner.stop();
       if (tags.length === 0) console.log(chalk.yellow('(no tags suggested)'));
-      else console.log(tags.map((t) => chalk.cyan(`#${t}`)).join(' '));
+      else console.log(tags.map((t: string) => chalk.cyan(`#${t}`)).join(' '));
     } catch (err) {
       spinner.fail(`Tag failed: ${(err as Error).message}`);
       process.exitCode = 1;

@@ -22,6 +22,9 @@ export function createProvider(config: ProviderConfig = defaultProviderConfig())
   if (config.kind === 'ollama') {
     return new OllamaProvider(config);
   }
+  if (config.kind === 'anthropic') {
+    return new AnthropicProvider(config);
+  }
   return new OpenAIProvider(config);
 }
 
@@ -107,5 +110,48 @@ class OpenAIProvider implements AIProvider {
     if (!res.ok) throw new Error(`OpenAI embed failed: ${res.status} ${await res.text()}`);
     const json = (await res.json()) as { data: { embedding: number[] }[] };
     return json.data.map((d) => d.embedding);
+  }
+}
+
+class AnthropicProvider implements AIProvider {
+  public readonly name: string;
+  private apiKey: string;
+  private chatModel: string;
+
+  constructor(cfg: ProviderConfig) {
+    if (!cfg.apiKey) throw new Error('Anthropic provider requires an API key');
+    this.apiKey = cfg.apiKey;
+    this.chatModel = cfg.chatModel;
+    this.name = `anthropic:${this.chatModel}`;
+  }
+
+  async chat(messages: ChatMessage[], opts: { temperature?: number } = {}): Promise<string> {
+    const systemMsgs = messages.filter(m => m.role === 'system');
+    const userMsgs = messages.filter(m => m.role !== 'system');
+
+    // Anthropic API uses 'system' at the top level
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': this.apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: this.chatModel,
+        system: systemMsgs.map(m => m.content).join('\n'),
+        messages: userMsgs,
+        max_tokens: 1024,
+        temperature: opts.temperature ?? 0.2,
+      }),
+    });
+    if (!res.ok) throw new Error(`Anthropic chat failed: ${res.status} ${await res.text()}`);
+    const json = (await res.json()) as { content: { text: string }[] };
+    return json.content[0]?.text ?? '';
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async embed(_texts: string[]): Promise<number[][]> {
+    throw new Error('Anthropic provider does not currently support embeddings natively in this client.');
   }
 }
