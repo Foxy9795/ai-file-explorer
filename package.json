@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "AI-powered file explorer: desktop app + CLI, backed by local Ollama models",
+  "type": "module",
   "license": "MIT",
   "workspaces": [
     "core",
@@ -18,13 +19,15 @@
     "dev:desktop": "npm -w @afe/desktop run dev",
     "dev:cli": "npm -w @afe/cli run dev",
     "lint": "npm -w @afe/core run lint && npm -w @afe/cli run lint && npm -w @afe/desktop run lint",
+    "test": "npm -w @afe/core run test && npm -w @afe/desktop run test",
     "typecheck": "npm -w @afe/core run typecheck && npm -w @afe/cli run typecheck && npm -w @afe/desktop run typecheck"
   },
   "devDependencies": {
-    "typescript": "^5.6.3",
     "@types/node": "^22.9.0",
-    "eslint": "^9.14.0",
+    "@typescript-eslint/eslint-plugin": "^8.14.0",
     "@typescript-eslint/parser": "^8.14.0",
-    "@typescript-eslint/eslint-plugin": "^8.14.0"
+    "eslint": "^9.14.0",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.71.2"
   }
 }
